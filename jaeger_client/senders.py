@@ -235,5 +235,6 @@ class HTTPSender(Sender):
         try:
             self.client.post(url=self.url, headers=headers, data=data)
         except ConnectionError:
+            logging.info("Retrying POST to jaeger_endpoint...")
             self._reconnect()
             self.client.post(url=self.url, headers=headers, data=data)
