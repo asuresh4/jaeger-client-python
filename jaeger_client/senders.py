@@ -18,6 +18,7 @@ import logging
 
 import requests
 import requests.auth
+from requests.exceptions import ConnectionError
 from . import thrift
 from .utils import raise_with_value
 from .local_agent_net import LocalAgentSender
@@ -200,13 +201,17 @@ class UDPSender(Sender):
 class HTTPSender(Sender):
     def __init__(self, endpoint, auth_token='', user='', password='', batch_size=10):
         super(HTTPSender, self).__init__(batch_size=batch_size)
-        self.client = requests.Session()
         self.url = endpoint
         self.auth_token = auth_token
         self.user = user
         self.password = password
+        self._reconnect()
+
+    def _reconnect(self):
+        self.client = requests.Session()
         if any((self.user, self.password)):
             self.client.auth = requests.auth.HTTPBasicAuth(self.user, self.password)
+
 
     def send(self, batch):
         """
@@ -221,6 +226,14 @@ class HTTPSender(Sender):
         headers['Content-Length'] = str(len(data))
 
         try:
-            self.client.post(url=self.url, headers=headers, data=data)
+            self._post(data, headers)
         except Exception as e:
             raise_with_value(e, 'POST to jaeger_endpoint failed: {}'.format(e))
+
+
+    def _post(self, data, headers):
+        try:
+            self.client.post(url=self.url, headers=headers, data=data)
+        except ConnectionError:
+            self._reconnect()
+            self.client.post(url=self.url, headers=headers, data=data)
